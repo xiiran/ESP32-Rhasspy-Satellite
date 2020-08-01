@@ -104,6 +104,12 @@ extern "C" {
 #include "ESPAsyncWebServer.h"
 #include "index_html.h"
 
+#include <WiFiMulti.h>
+#include <WebSocketsClient.h>
+
+WiFiMulti WiFiMulti;
+WebSocketsClient webSocket;
+
 extern const esp_wn_iface_t esp_sr_wakenet3_quantized;
 extern const model_coeff_getter_t get_coeff_wakeNet3_model_float;
 #define WAKENET_COEFF get_coeff_wakeNet3_model_float
@@ -795,11 +801,12 @@ void Audiostream(void *p) {
                         // it as 1 byte We do a memcpy, because I need to add the
                         // wave header as well
                         memcpy(voicemapped, voicebuffer, config.CHUNK * WIDTH);
+                        webSocket.sendBIN((uint8_t *)voicemapped, sizeof(voicemapped));
 
                         // Add the wave header
-                        memcpy(payload, &header, sizeof(header));
-                        memcpy(&payload[sizeof(header)], voicemapped,sizeof(voicemapped));
-                        audioServer.publish(audioFrameTopic.c_str(),(uint8_t *)payload, sizeof(payload));
+//                        memcpy(payload, &header, sizeof(header));
+//                        memcpy(&payload[sizeof(header)], voicemapped,sizeof(voicemapped));
+//                        audioServer.publish(audioFrameTopic.c_str(),(uint8_t *)payload, sizeof(payload));
                         streamMessageCount++;
                     }
                 }
@@ -1510,6 +1517,12 @@ void setup() {
 
     server.on("/", handleRequest);
     server.begin();
+
+	// server address, port and URL
+	webSocket.begin("192.168.43.16", 2700, "/");
+
+	// try ever 5000 again if connection has failed
+	webSocket.setReconnectInterval(5000);
 
 }
 
