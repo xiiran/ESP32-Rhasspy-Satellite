@@ -104,10 +104,8 @@ extern "C" {
 #include "ESPAsyncWebServer.h"
 #include "index_html.h"
 
-#include <WiFiMulti.h>
 #include <WebSocketsClient.h>
 
-WiFiMulti WiFiMulti;
 WebSocketsClient webSocket;
 
 extern const esp_wn_iface_t esp_sr_wakenet3_quantized;
@@ -136,6 +134,10 @@ enum {
   HW_LOCAL = 0,
   HW_REMOTE = 1
 };
+enum {
+  AS_WEBSOCKET = 0,
+  AS_MQTT = 1
+};
 
 // Convert 4 byte little-endian to a long,
 #define longword(bfr, ofs) (bfr[ofs + 3] << 24 | bfr[ofs + 2] << 16 | bfr[ofs + 1] << 8 | bfr[ofs + 0])
@@ -157,12 +159,15 @@ AsyncWebServer server(80);
 //Configuration defaults
 struct Config {
   IPAddress mqtt_host;
+  IPAddress websocket_host;
   bool mqtt_valid = false;
   int mqtt_port = 1883;
+  int websocket_port = 2700;
   bool mute_input = false;
   bool mute_output = false;
   uint16_t hotword_detection = HW_REMOTE;
   uint16_t amp_output = AMP_OUT_HEADPHONE;
+  uint16_t audio_system = AS_WEBSOCKET;
   int brightness = 15;
   int hotword_brightness = 15;  
   uint16_t volume = 100;
@@ -353,6 +358,11 @@ void loadConfiguration(const char *filename, Config &config) {
     char ip[64];
     strlcpy(ip,doc["mqtt_host"],sizeof(ip));
     config.mqtt_valid = config.mqtt_host.fromString(ip);
+    doc["websocket_host"] = "192.168.43.102";
+//    doc["websocket_port"] = 2700;
+    strlcpy(ip,doc["websocket_host"],sizeof(ip));
+    config.websocket_host.fromString(ip);
+//    config.websocket_port = doc["websocket_port"];
     config.mqtt_port = doc["mqtt_port"];
     config.mute_input = doc["mute_input"];
     config.mute_output = doc["mute_output"];
@@ -766,6 +776,8 @@ void Audiostream(void *p) {
                 // Sound buffers
                 uint16_t voicebuffer[config.CHUNK];
                 uint8_t voicemapped[config.CHUNK * WIDTH];
+                uint16_t voicebuffer2[mics.NumberOfSamples()];
+                uint8_t voicemapped2[mics.NumberOfSamples() * WIDTH];
                 uint8_t payload[sizeof(header) + (config.CHUNK * WIDTH)];
 
                 if (!hotword_detected && config.hotword_detection == HW_LOCAL) {
@@ -793,21 +805,30 @@ void Audiostream(void *p) {
                     // framerate of Snips. This defaults to 512 / 256 = 2. If you
                     // lower the framerate, the AudioServer has to send more
                     // wavefile because the NumOfSamples is a fixed number
-                    for (int i = 0; i < message_count; i++) {
-                        for (uint32_t s = config.CHUNK * i; s < config.CHUNK * (i + 1); s++) {
-                            voicebuffer[s - (config.CHUNK * i)] = mics.Beam(s);
+                    if (config.audio_system == AS_WEBSOCKET) {
+                        if (webSocket.isConnected()) {
+                            for (uint32_t s = 0; s < mics.NumberOfSamples(); s++) {
+                                voicebuffer2[s] = mics.Beam(s);
+                            }
+                            memcpy(voicemapped2, voicebuffer2, mics.NumberOfSamples() * WIDTH);
+                            webSocket.sendBIN((uint8_t *)voicemapped2, sizeof(voicemapped2));
+                            webSocket.loop();
                         }
-                        // voicebuffer will hold 256 samples of 2 bytes, but we need
-                        // it as 1 byte We do a memcpy, because I need to add the
-                        // wave header as well
-                        memcpy(voicemapped, voicebuffer, config.CHUNK * WIDTH);
-                        webSocket.sendBIN((uint8_t *)voicemapped, sizeof(voicemapped));
-
-                        // Add the wave header
-//                        memcpy(payload, &header, sizeof(header));
-//                        memcpy(&payload[sizeof(header)], voicemapped,sizeof(voicemapped));
-//                        audioServer.publish(audioFrameTopic.c_str(),(uint8_t *)payload, sizeof(payload));
-                        streamMessageCount++;
+                    } else {
+                        for (int i = 0; i < message_count; i++) {
+                            for (uint32_t s = config.CHUNK * i; s < config.CHUNK * (i + 1); s++) {
+                                voicebuffer[s - (config.CHUNK * i)] = mics.Beam(s);
+                            }
+                            // voicebuffer will hold 256 samples of 2 bytes, but we need
+                            // it as 1 byte We do a memcpy, because I need to add the
+                            // wave header as well
+                            memcpy(voicemapped, voicebuffer, config.CHUNK * WIDTH);
+                            // Add the wave header
+                            memcpy(payload, &header, sizeof(header));
+                            memcpy(&payload[sizeof(header)], voicemapped,sizeof(voicemapped));
+                            audioServer.publish(audioFrameTopic.c_str(),(uint8_t *)payload, sizeof(payload));
+                            streamMessageCount++;
+                        }
                     }
                 }
             }
@@ -1518,12 +1539,8 @@ void setup() {
     server.on("/", handleRequest);
     server.begin();
 
-	// server address, port and URL
-	webSocket.begin("192.168.43.16", 2700, "/");
-
-	// try ever 5000 again if connection has failed
-	webSocket.setReconnectInterval(5000);
-
+	webSocket.begin(config.websocket_host, config.websocket_port);
+	webSocket.setReconnectInterval(5000);    
 }
 
 /* ************************************************************************ *
@@ -1531,4 +1548,5 @@ void setup() {
  * ************************************************************************ */
 void loop() {
     ArduinoOTA.handle();
+    webSocket.loop(); 
 }
