@@ -226,7 +226,7 @@ bool hotword_detected = false;
 bool isUpdateInProgess = false;
 bool streamingBytes = false;
 bool endStream = false;
-bool DEBUG = false;
+bool DEBUG = true;
 std::string finishedMsg = "";
 std::string detectMsg = "";
 int chunkValues[] = {32, 64, 128, 256, 512, 1024};
@@ -358,7 +358,7 @@ void loadConfiguration(const char *filename, Config &config) {
     char ip[64];
     strlcpy(ip,doc["mqtt_host"],sizeof(ip));
     config.mqtt_valid = config.mqtt_host.fromString(ip);
-    doc["websocket_host"] = "192.168.43.102";
+    doc["websocket_host"] = "192.168.43.16";
 //    doc["websocket_port"] = 2700;
     strlcpy(ip,doc["websocket_host"],sizeof(ip));
     config.websocket_host.fromString(ip);
@@ -1401,6 +1401,32 @@ void handleRequest ( AsyncWebServerRequest* request )
     handleFSf ( request, String( "/index.html") ) ;
 }
 
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+
+	switch(type) {
+		case WStype_DISCONNECTED:
+			break;
+		case WStype_CONNECTED:
+            publishDebug("Connected");
+			break;
+		case WStype_TEXT:
+            char str[1000];
+            sprintf(str, "Payload %s", payload);
+            publishDebug(str);
+			break;
+		case WStype_BIN:
+			break;
+        case WStype_PING:
+        case WStype_PONG:
+		case WStype_ERROR:			
+		case WStype_FRAGMENT_TEXT_START:
+		case WStype_FRAGMENT_BIN_START:
+		case WStype_FRAGMENT:
+		case WStype_FRAGMENT_FIN:
+			break;
+	}
+}
+
 /* ************************************************************************ *
       SETUP
  * ************************************************************************ */
@@ -1540,6 +1566,7 @@ void setup() {
     server.begin();
 
 	webSocket.begin(config.websocket_host, config.websocket_port);
+    webSocket.onEvent(webSocketEvent);
 	webSocket.setReconnectInterval(5000);    
 }
 
