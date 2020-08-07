@@ -777,7 +777,7 @@ void Audiostream(void *p) {
                 uint16_t voicebuffer[config.CHUNK];
                 uint8_t voicemapped[config.CHUNK * WIDTH];
                 uint16_t voicebuffer2[mics.NumberOfSamples()];
-                uint8_t voicemapped2[mics.NumberOfSamples() * WIDTH];
+                uint8_t voicemapped2[mics.NumberOfSamples() * WIDTH * 2];
                 uint8_t payload[sizeof(header) + (config.CHUNK * WIDTH)];
 
                 if (!hotword_detected && config.hotword_detection == HW_LOCAL) {
@@ -801,20 +801,27 @@ void Audiostream(void *p) {
                 }
 
                 if (hotword_detected || config.hotword_detection == HW_REMOTE) {
-                    // Message count is the Matrix NumberOfSamples divided by the
-                    // framerate of Snips. This defaults to 512 / 256 = 2. If you
-                    // lower the framerate, the AudioServer has to send more
-                    // wavefile because the NumOfSamples is a fixed number
                     if (config.audio_system == AS_WEBSOCKET) {
                         if (webSocket.isConnected()) {
                             for (uint32_t s = 0; s < mics.NumberOfSamples(); s++) {
                                 voicebuffer2[s] = mics.Beam(s);
                             }
                             memcpy(voicemapped2, voicebuffer2, mics.NumberOfSamples() * WIDTH);
+                            mics.Read();
+                            for (uint32_t s = 0; s < mics.NumberOfSamples(); s++) {
+                                voicebuffer2[s] = mics.Beam(s);
+                            }
+                            memcpy(&voicemapped2[sizeof(voicebuffer2)], voicebuffer2, mics.NumberOfSamples() * WIDTH);
                             webSocket.sendBIN((uint8_t *)voicemapped2, sizeof(voicemapped2));
-                            webSocket.loop();
+                         //   webSocket.loop();
+                        } else {
+                            publishDebug("disconnected");
                         }
                     } else {
+                        // Message count is the Matrix NumberOfSamples divided by the
+                        // framerate of Snips. This defaults to 512 / 256 = 2. If you
+                        // lower the framerate, the AudioServer has to send more
+                        // wavefile because the NumOfSamples is a fixed number
                         for (int i = 0; i < message_count; i++) {
                             for (uint32_t s = config.CHUNK * i; s < config.CHUNK * (i + 1); s++) {
                                 voicebuffer[s - (config.CHUNK * i)] = mics.Beam(s);
@@ -1403,6 +1410,8 @@ void handleRequest ( AsyncWebServerRequest* request )
 
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 
+    StaticJsonDocument<300> doc;
+    DeserializationError err;   
 	switch(type) {
 		case WStype_DISCONNECTED:
 			break;
@@ -1411,8 +1420,17 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 			break;
 		case WStype_TEXT:
             char str[1000];
-            sprintf(str, "Payload %s", payload);
-            publishDebug(str);
+            char raw[1000];
+            sprintf(str, "%s", payload);
+            sprintf(raw, "%s", payload);
+            err = deserializeJson(doc, str);
+            if (!err) {
+                JsonObject root = doc.as<JsonObject>();
+                if (root.containsKey("result")) {
+                    publishDebug(raw);
+                    publishDebug(root["text"]);
+                }
+            }
 			break;
 		case WStype_BIN:
 			break;
