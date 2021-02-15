@@ -81,13 +81,15 @@
 #include <ArduinoOTA.h>
 #include <WiFi.h>
 #include "device.h"
+#include "deviceDefinitions.h"
 
 #define M5ATOMECHO 0
 #define MATRIXVOICE 1
 #define AUDIOKIT 2
+#define SPENCER 3
 
 // This is where you can include your device, make sure to create a *device
-// The *device is used to call methods 
+// The *device is used to call methods
 #if DEVICE_TYPE == M5ATOMECHO
   #include "devices/M5AtomEcho.hpp"
   M5AtomEcho *device = new M5AtomEcho();
@@ -97,6 +99,9 @@
 #elif DEVICE_TYPE == AUDIOKIT
   #include "devices/AudioKit.hpp"
   AudioKit *device = new AudioKit();
+#elif DEVICE_TYPE == SPENCER
+  #include "devices/SpencerDevice.hpp"
+  SpencerDevice *device = new SpencerDevice(); 
 #endif
 
 #include <General.hpp>
