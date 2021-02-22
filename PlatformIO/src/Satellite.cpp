@@ -81,7 +81,6 @@
 #include <ArduinoOTA.h>
 #include <WiFi.h>
 #include "device.h"
-#include "deviceDefinitions.h"
 
 #define M5ATOMECHO 0
 #define MATRIXVOICE 1
