@@ -20,10 +20,8 @@ public:
 
     bool isHotwordDetected() override;
 
-    //void setStartReadingAudio( bool startReadingAudio ) override;
-
     int readSize = 400;
-	int writeSize = 10024;
+	int writeSize = 512;
 	int width = 2;
 	int rate = 16000;
 
