@@ -17,6 +17,7 @@ public:
     SpencerDevice();
     ~SpencerDevice();
     void init() override;
+    void updateColors(int colors) override;
 
     void setReadMode() override;
     void setWriteMode(int sampleRate, int bitDepth, int numChannels) override;
@@ -31,9 +32,9 @@ public:
     bool isHotwordDetected() override;
 
     int readSize = 400;
-	int writeSize = 512;
-	int width = 2;
-	int rate = 16000;
+    int writeSize = 512;
+    int width = 2;
+    int rate = 16000;
 
 private:
     I2S i2s;
@@ -41,8 +42,8 @@ private:
     void InitI2SSpeakerOrMic(int mode);
 
     const uint32_t wavBufferSize = sizeof(uint16_t) * i2sBufferSize / 4; // i2sBuffer is stereo by byte, wavBuffer is mono int16
-	char* i2sBuffer = static_cast<char*>(malloc(i2sBufferSize));
-	uint16_t* wavBuffer = static_cast<uint16_t*>(malloc(wavBufferSize));
+    char* i2sBuffer = static_cast<char*>(malloc(i2sBufferSize));
+    uint16_t* wavBuffer = static_cast<uint16_t*>(malloc(wavBufferSize));
     
     // SetGain and Amplify same as in ESP8266Audio/src/AudioOutput.h
     bool SetGain(float f) { if (f>4.0) f = 4.0; if (f<0.0) f=0.0; gainF2P6 = (uint8_t)(f*(1<<6)); return true; }
@@ -65,7 +66,7 @@ SpencerDevice::SpencerDevice()
 SpencerDevice::~SpencerDevice()
 {
     free(i2sBuffer);
-	free(wavBuffer);
+    free(wavBuffer);
 }
 
 void SpencerDevice::init()
@@ -74,17 +75,43 @@ void SpencerDevice::init()
     Spencer.loadSettings();
 }
 
+void SpencerDevice::updateColors(int colors)
+{
+  LEDmatrix.setBrightness(10);
+  // TODO: LEDmatrix clear() and push() slows down readAudio, check why
+  // LEDmatrix.clear();
+  switch (colors) {
+    case COLORS_HOTWORD:
+      digitalWrite(LED_PIN, 1);
+      LEDmatrix.drawString(0, 0, "H");
+    break;
+    case COLORS_WIFI_CONNECTED:
+      LEDmatrix.drawString(0, 0, "C");
+    break;
+    case COLORS_IDLE:
+      digitalWrite(LED_PIN, 0);
+      LEDmatrix.drawString(0, 0, "I");
+    break;
+    case COLORS_WIFI_DISCONNECTED:
+      LEDmatrix.drawString(0, 0, "W");
+    break;
+    case COLORS_OTA:
+      LEDmatrix.drawString(0, 0, "O");
+    break;
+  }
+  // LEDmatrix.push();
+}
+
 void SpencerDevice::setWriteMode(int sampleRate, int bitDepth, int numChannels)
 {
     SpencerDevice::sampleRate = sampleRate;
-	SpencerDevice::bitDepth = bitDepth;
-	SpencerDevice::numChannels = numChannels;
-    const int modeSpeaker = 1;
-    if (mode != modeSpeaker)
+    SpencerDevice::bitDepth = bitDepth;
+    SpencerDevice::numChannels = numChannels;
+    if (mode != MODE_SPK)
     {
         Serial.println("Init speaker");
-        InitI2SSpeakerOrMic(modeSpeaker);
-        mode = modeSpeaker;
+        InitI2SSpeakerOrMic(MODE_SPK);
+        mode = MODE_SPK;
     }
 
     if (sampleRate > 0) {
@@ -93,17 +120,16 @@ void SpencerDevice::setWriteMode(int sampleRate, int bitDepth, int numChannels)
     }
 
     speex_resampler_set_rate(resampler,sampleRate,32000);
-	speex_resampler_skip_zeros(resampler);
+    speex_resampler_skip_zeros(resampler);
 }
 
 void SpencerDevice::setReadMode()
 {
-    const int modeMic = 0;
-    if (mode != modeMic)
+    if (mode != MODE_MIC)
     {
         Serial.println("Init mic");
-        InitI2SSpeakerOrMic(modeMic);
-        mode = modeMic;
+        InitI2SSpeakerOrMic(MODE_MIC);
+        mode = MODE_MIC;
     }
 }
 
